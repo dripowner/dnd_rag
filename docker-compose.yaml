@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  fastapi:
+    build: ./fastapi
+    ports:
+      - "8080:8080"
+    networks:
+      - app-network
+    volumes:
+      - ./fastapi/_data:/app/_data
+
+  streamlit:
+    build: ./streamlit
+    ports:
+      - "8501:8501"
+    depends_on:
+      - fastapi
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
