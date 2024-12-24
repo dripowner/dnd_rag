@@ -6,7 +6,7 @@ from typing import AsyncGenerator
 import uvicorn
 from langchain.chains.combine_documents.stuff import create_stuff_documents_chain
 from langchain.chains.retrieval import create_retrieval_chain
-from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -29,7 +29,7 @@ logging.basicConfig(level=logging.INFO)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     global llm, embeddings, vector_store, text_splitter, retrieval_qa, memory
     llm = ChatMistralAI(
-        model="mistral-large-latest", api_key=os.getenv("MISTRAL_API_KEY")
+        model="mistral-large-latest", api_key=os.getenv("MISTRAL_API_KEY"), timeout=60
     )
     embeddings = HuggingFaceEmbeddings(model_name="cointegrated/rubert-tiny2")
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
@@ -46,10 +46,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         vector_store = FAISS.from_documents(split_documents, embedding=embeddings)
         vector_store.save_local("_data/vecstore/vector_store.faiss")
 
-    system_template = "Ты помощник по настольным играм Dungeons & Dragons. Твоя задача - помогать игрокам и ведущим в различных аспектах игры, \
-        включая правила, создание персонажей, описание монстров, заклинания и многое другое. Используй следующую контекстную информацию, \
-        чтобы ответить на вопрос. Если в контексте нет ответа, ответь 'Не знаю ответа на вопрос'. \
-        Используй максимум три предложения и будь точным но кратким.\n\nИстория диалога: {chat_history}"
+    system_template = (
+        "Ты помощник по настольным играм Dungeons & Dragons. Твоя задача - помогать игрокам и ведущим в различных аспектах игры, \
+        включая правила, создание персонажей, описание монстров, заклинания и многое другое. Также ты должен подробно и точно отвечать на вопросы по сюжету и миру игры. \
+        Используй следующую контекстную информацию, чтобы ответить на вопрос. Если в контексте нет ответа, ответь 'Не знаю ответа на вопрос'. \
+        <удь точным но кратким.\n\nИстория диалога: {chat_history}"
+    )
 
     memory = ConversationBufferWindowMemory(
         k=10, memory_key="chat_history", return_messages=True
@@ -94,8 +96,8 @@ async def rag_response(query: Message):
 
 @app.post("/add_document")
 async def add_document(file: UploadFile):
-    if not file.filename.endswith(".pdf"):
-        return JSONResponse(status_code=400, content={"error": "Not pdf file"})
+    if not file.filename.endswith((".pdf", ".txt")):
+        return JSONResponse(status_code=400, content={"error": "Not pdf or txt file"})
 
     temp_path = f"_data/temp/{file.filename}"
     os.makedirs(os.path.dirname(temp_path), exist_ok=True)
@@ -104,10 +106,12 @@ async def add_document(file: UploadFile):
     with open(temp_path, "wb") as f:
         f.write(content)
 
-    loader = PyPDFLoader(temp_path)
-    documents = loader.load()
-    split_docs = text_splitter.split_documents(documents)
-    vector_store.add_documents(split_docs)
+    if file.filename.endswith(".pdf"):
+        loader = PyPDFLoader(temp_path)
+    else:
+        loader = TextLoader(temp_path)
+    documents = loader.load_and_split(text_splitter)
+    vector_store.add_documents(documents)
 
     os.remove(temp_path)
 
