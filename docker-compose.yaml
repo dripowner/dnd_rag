@@ -8,7 +8,8 @@ services:
     networks:
       - app-network
     volumes:
-      - ./fastapi/_data:/app/_data
+      # - ./fastapi/_data:/app/_data
+      - ./fastapi:/app
 
   streamlit:
     build: ./streamlit
@@ -18,6 +19,8 @@ services:
       - fastapi
     networks:
       - app-network
+    volumes:
+      - ./streamlit:/app
 
 networks:
   app-network:
