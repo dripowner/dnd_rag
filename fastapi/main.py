@@ -91,7 +91,12 @@ async def rag_response(query: Message):
     )
     memory.save_context({"input": query.message}, {"output": response["answer"]})
 
-    return JSONResponse(content={"response": response["answer"]})
+    return JSONResponse(
+        content={
+            "response": response["answer"],
+            "context": [doc.page_content for doc in response["context"]],
+        }
+    )
 
 
 @app.post("/add_document")
