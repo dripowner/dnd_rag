@@ -34,7 +34,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
 
     if os.path.exists("_data/vecstore/vector_store.faiss"):
-        vector_store = FAISS.load_local("_data/vecstore/vector_store.faiss", embeddings)
+        vector_store = FAISS.load_local(
+            "_data/vecstore/vector_store.faiss",
+            embeddings,
+            allow_dangerous_deserialization=True,
+        )
     else:
         documents = load_documents("_data/docs")
         split_documents = text_splitter.split_documents(documents)
@@ -42,7 +46,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         vector_store.save_local("_data/vecstore/vector_store.faiss")
 
     system_template = (
-        "Ты помощник по вопросам-ответам. Используй следующую контекстную информацию, \
+        "Ты помощник по настольным играм Dungeons & Dragons. Твоя задача - помогать игрокам и ведущим в различных аспектах игры, \
+        включая правила, создание персонажей, описание монстров, заклинания и многое другое. Используй следующую контекстную информацию, \
         чтобы ответить на вопрос. Если в контексте нет ответа, ответь 'Не знаю ответа на вопрос'. \
         Используй максимум три предложения и будь точным но кратким."
     )
@@ -50,7 +55,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     qa_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", system_template),
-            ("human", """Контекстная информация:{context}\nВопрос: {input}"""),
+            ("human", """Контекстная информация: {context}\nВопрос: {input}"""),
         ]
     )
     document_chain = create_stuff_documents_chain(llm, qa_prompt)
