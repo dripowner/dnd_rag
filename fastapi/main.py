@@ -12,6 +12,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_mistralai import ChatMistralAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain.memory import ConversationBufferWindowMemory
 from pydantic import BaseModel
 from utils import load_documents
 
@@ -26,7 +27,7 @@ logging.basicConfig(level=logging.INFO)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    global llm, embeddings, vector_store, text_splitter, retrieval_qa
+    global llm, embeddings, vector_store, text_splitter, retrieval_qa, memory
     llm = ChatMistralAI(
         model="mistral-large-latest", api_key=os.getenv("MISTRAL_API_KEY")
     )
@@ -45,11 +46,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         vector_store = FAISS.from_documents(split_documents, embedding=embeddings)
         vector_store.save_local("_data/vecstore/vector_store.faiss")
 
-    system_template = (
-        "Ты помощник по настольным играм Dungeons & Dragons. Твоя задача - помогать игрокам и ведущим в различных аспектах игры, \
+    system_template = "Ты помощник по настольным играм Dungeons & Dragons. Твоя задача - помогать игрокам и ведущим в различных аспектах игры, \
         включая правила, создание персонажей, описание монстров, заклинания и многое другое. Используй следующую контекстную информацию, \
         чтобы ответить на вопрос. Если в контексте нет ответа, ответь 'Не знаю ответа на вопрос'. \
-        Используй максимум три предложения и будь точным но кратким."
+        Используй максимум три предложения и будь точным но кратким.\n\nИстория диалога: {chat_history}"
+
+    memory = ConversationBufferWindowMemory(
+        k=10, memory_key="chat_history", return_messages=True
     )
 
     qa_prompt = ChatPromptTemplate.from_messages(
@@ -78,7 +81,14 @@ app = FastAPI(lifespan=lifespan)
 
 @app.post("/rag_response")
 async def rag_response(query: Message):
-    response = retrieval_qa.invoke({"input": query.message})
+    response = retrieval_qa.invoke(
+        {
+            "input": query.message,
+            "chat_history": memory.load_memory_variables({})["chat_history"],
+        }
+    )
+    memory.save_context({"input": query.message}, {"output": response["answer"]})
+
     return JSONResponse(content={"response": response["answer"]})
 
 
