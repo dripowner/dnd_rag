@@ -1,7 +1,10 @@
-import streamlit as st
+import os
+
 import requests
 from dotenv import load_dotenv
-import os
+from utils import send_feedback
+
+import streamlit as st
 
 load_dotenv(".env")
 
@@ -16,6 +19,25 @@ with st.container():
                 json={"message": user_input},
             )
             st.write(response.json()["response"])
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button(
+                    "👍 Полезно",
+                    key="like",
+                    on_click=send_feedback,
+                    args=(response.json()["run_id"], 1.0),
+                ):
+                    pass
+
+            with col2:
+                if st.button(
+                    "👎 Не полезно",
+                    key="dislike",
+                    on_click=send_feedback,
+                    args=(response.json()["run_id"], 0.0),
+                ):
+                    pass
         else:
             st.warning("Пожалуйста, введите сообщение")
 

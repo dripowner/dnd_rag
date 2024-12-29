@@ -1,24 +1,26 @@
 import logging
 import os
+import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
+import dotenv
 import uvicorn
 from langchain.chains.combine_documents.stuff import create_stuff_documents_chain
 from langchain.chains.retrieval import create_retrieval_chain
+from langchain.memory import ConversationBufferWindowMemory
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_mistralai import ChatMistralAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain.memory import ConversationBufferWindowMemory
-from pydantic import BaseModel
-from utils import load_documents
+from langsmith import Client
+from schemes import Feedback, Message
+from utils import get_answer, load_documents
 
 from fastapi import FastAPI, UploadFile
 from fastapi.responses import JSONResponse
-import dotenv
 
 dotenv.load_dotenv()
 
@@ -27,12 +29,13 @@ logging.basicConfig(level=logging.INFO)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    global llm, embeddings, vector_store, text_splitter, retrieval_qa, memory
+    global llm, embeddings, vector_store, text_splitter, retrieval_qa, memory, ls_client
+    ls_client = Client(api_key=os.getenv("LANGCHAIN_API_KEY"))
     llm = ChatMistralAI(
         model="mistral-large-latest", api_key=os.getenv("MISTRAL_API_KEY"), timeout=60
     )
     embeddings = HuggingFaceEmbeddings(model_name="cointegrated/rubert-tiny2")
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=500)
 
     if os.path.exists("_data/vecstore/vector_store.faiss"):
         vector_store = FAISS.load_local(
@@ -74,27 +77,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     vector_store.save_local("_data/vecstore/vector_store.faiss")
 
 
-class Message(BaseModel):
-    message: str
-
-
 app = FastAPI(lifespan=lifespan)
 
 
 @app.post("/rag_response")
 async def rag_response(query: Message):
-    response = retrieval_qa.invoke(
-        {
-            "input": query.message,
-            "chat_history": memory.load_memory_variables({})["chat_history"],
-        }
+    run_id = str(uuid.uuid4())
+
+    response = get_answer(
+        query, retrieval_qa, memory, langsmith_extra={"run_id": run_id}
     )
-    memory.save_context({"input": query.message}, {"output": response["answer"]})
 
     return JSONResponse(
         content={
             "response": response["answer"],
             "context": [doc.page_content for doc in response["context"]],
+            "run_id": run_id,
         }
     )
 
@@ -120,6 +118,16 @@ async def add_document(file: UploadFile):
 
     os.remove(temp_path)
 
+    return JSONResponse(content={"status": "success"})
+
+
+@app.post("/feedback")
+async def feedback(feedback: Feedback):
+    ls_client.create_feedback(
+        feedback.run_id,
+        key="user-score",
+        score=feedback.score,
+    )
     return JSONResponse(content={"status": "success"})
 
 

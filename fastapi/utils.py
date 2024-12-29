@@ -1,7 +1,11 @@
 import os
 
+from langchain.memory import ConversationBufferWindowMemory
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_core.documents import Document
+from langchain_core.runnables import Runnable
+from langsmith import traceable
+from schemes import Message
 
 
 def load_documents(data_folder_path: str) -> list[Document]:
@@ -19,3 +23,17 @@ def load_documents(data_folder_path: str) -> list[Document]:
         documents.extend(loader.load())
 
     return documents
+
+
+@traceable(project_name=os.getenv("LANGCHAIN_PROJECT"))
+def get_answer(
+    query: Message, retrieval_qa: Runnable, memory: ConversationBufferWindowMemory
+):
+    response = retrieval_qa.invoke(
+        {
+            "input": query.message,
+            "chat_history": memory.load_memory_variables({})["chat_history"],
+        }
+    )
+    memory.save_context({"input": query.message}, {"output": response["answer"]})
+    return response
