@@ -10,16 +10,25 @@ services:
     volumes:
       - ./fastapi:/app
 
-  streamlit:
-    image: dndrag-streamlit
-    ports:
-      - "8501:8501"
+  test:
+    image: dndrag-test
+    command: [ "python", "main.py" ]
     depends_on:
       - fastapi
     networks:
       - app-network
     volumes:
-      - ./streamlit:/app
+      - ./test:/app
+
+  upload-dataset:
+    image: dndrag-test
+    command: [ "python", "dataset.py" ]
+    depends_on:
+      - fastapi
+    networks:
+      - app-network
+    volumes:
+      - ./test:/app
 
 networks:
   app-network:
