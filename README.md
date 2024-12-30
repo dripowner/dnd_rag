@@ -17,20 +17,69 @@ RAG ассистент, который использует Mistral AI для о
 
 ## Как запустить
 
-Скопируйте файл `.env.example` в `.env` и заполните его:
-- `MISTRAL_API_KEY` - ключ API Mistral AI
-- `HOST` - хост, на котором будет запущен FastAPI
-- `PORT` - порт, на котором будет запущен FastAPI
+Для использования `make` необходимо работать в Linux либо в WSL2 на windows
 
-windows + wsl2 / linux:
-- `make up` - запуск приложения
-- `make build` - сборка приложения
-- `make down` - завершение работы приложения
+1. `make build`
+
+2. `cp fastapi/.env.example fastapi/.env`
+
+    Заполните переменные своими api ключами
+
+3. `cp test/.env.example test/.env`
+
+    Заполните переменные своими api ключами
+
+    Укажите имя для датасета загружаемого в LangSmith
+
+4. `cp streamlit/.env.example streamlit/.env`
+
+    Ничего заполнять не нужно
+
+5. `make up`
+
+    Для запуска *fastapi* и *streamlit*
+
+6. `make test-up`
+
+    Для запуска *fastapi* и валидации
 
 ## Пример интерфейса
 
 ![streamlit](imgs/interface.png)
 
+Добавлены кнопки для обратной связи пользователя, которые логгируются в LangSmith
+
+![streamlit_feedback](imgs/interface_feedback.png)
+
+Отображение обратной свзяи в LangSmith
+
+![streamlit_feedback](imgs/ls_user_feedback.png)
+
 ## Валидация
 
-TODO
+### Датасет
+
+1. dataset.json
+    
+    50 пар вопрос-ответ сгенерированы с помощью Mistral, постобработка не проводилась
+
+### Загрузка датасета
+
+`make test-dataset-upload`
+
+Будут загружены данные из *dataset.json* в датасет с именем *DATASET_NAME*, указанным в *.env* файле
+
+### Запуск валидации
+
+`make test-up`
+
+### Результаты валидации
+
+| Document Relevance | Answer Hallucination | Answer Helpfulness | Answer vs Reference |
+|:-------------------|:--------------------|:-------------------|:--------------------|
+| 0.82               | 0.16                | 0.86               | 0.70                |
+
+
+Низкое значение Answer Hallucination вызвано тем, что датасет полностью синтетический, модель сгенерировала короткие ответы без подробностей, в то время как RAG система дает более подробные и полные ответы, которые не входят в рамки синтетических референсных ответов, из-за чего большая часть ответов RAG получила нулевой скор
+
+![validation](imgs/validation.png)
